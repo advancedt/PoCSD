@@ -1,2 +1,2 @@
 # PoSCD
-For the EEL5757 in UFL
+EEL5737 Principle of Computer System Design
