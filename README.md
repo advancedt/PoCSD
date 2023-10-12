@@ -1,2 +1,1 @@
-# PoSCD
-EEL5737 Principle of Computer System Design
+# Principle of Computer System Design(EEL5737)
