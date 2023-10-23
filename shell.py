@@ -1,5 +1,3 @@
-import logging
-
 import fsconfig
 import os.path
 
@@ -18,7 +16,6 @@ class FSShell():
         # we start in the root directory
         self.cwd = 0
         self.FileOperationsObject = FileOperationsObject
-        # Create AbsolutePathObject
         self.AbsolutePathObject = AbsolutePathObject
         self.RawBlocks = RawBlocks
 
@@ -109,7 +106,6 @@ class FSShell():
     # file operations
     # implements cd (change directory)
     def cd(self, dir):
-        # i = self.FileOperationsObject.FileNameObject.Lookup(dir, self.cwd)
         i = self.AbsolutePathObject.PathNameToInodeNumber(dir, self.cwd)
         if i == -1:
             print("Error: not found\n")
@@ -141,20 +137,20 @@ class FSShell():
                 inobj2.InodeNumberToInode(self.RawBlocks)
                 if inobj2.inode.type == fsconfig.INODE_TYPE_DIR:
                     print("[" + str(inobj2.inode.refcnt) + "]:" + entryname.decode() + "/")
-                # [1]:mylink@ -> /dir1/dir2/somefile
-                elif inobj2.inode.type == fsconfig.INODE_TYPE_SYM:
-                    symBlock = self.FileOperationsObject.FileNameObject.RawBlocks.Get(inobj2.inode.block_numbers[0])
-                    symPath = symBlock[0:inobj2.inode.size]
-                    print("[" + str(inobj2.inode.refcnt) + "]:" + entryname.decode() + "@ -> " + symPath.decode())
                 else:
-                    print("[" + str(inobj2.inode.refcnt) + "]:" + entryname.decode())
+                    if inobj2.inode.type == fsconfig.INODE_TYPE_SYM:
+                        target_block_number = inobj2.inode.block_numbers[0]
+                        target_block = self.RawBlocks.Get(target_block_number)
+                        target_slice = target_block[0:inobj2.inode.size]
+                        print("[" + str(inobj2.inode.refcnt) + "]:" + entryname.decode() + "@ -> " + target_slice.decode())
+                    else:
+                        print("[" + str(inobj2.inode.refcnt) + "]:" + entryname.decode())
                 current_position += fsconfig.FILE_NAME_DIRENTRY_SIZE
             block_index += 1
         return 0
 
     # implements cat (print file contents)
     def cat(self, filename):
-        # i = self.FileOperationsObject.FileNameObject.Lookup(filename, self.cwd)
         i = self.AbsolutePathObject.PathNameToInodeNumber(filename, self.cwd)
         if i == -1:
             print("Error: not found\n")
@@ -189,7 +185,6 @@ class FSShell():
 
     # implements append
     def append(self, filename, string):
-        # i = self.FileOperationsObject.FileNameObject.Lookup(filename, self.cwd)
         i = self.AbsolutePathObject.PathNameToInodeNumber(filename, self.cwd)
         if i == -1:
             print("Error: not found\n")
@@ -218,7 +213,6 @@ class FSShell():
         except ValueError:
             print('Error: ' + count + ' not a valid Integer')
             return -1
-        # i = self.FileOperationsObject.FileNameObject.Lookup(filename, self.cwd)
         i = self.AbsolutePathObject.PathNameToInodeNumber(filename, self.cwd)
         if i == -1:
             print("Error: not found\n")
@@ -236,7 +230,6 @@ class FSShell():
 
     # implements mirror filename (mirror the contents of a file)
     def mirror(self, filename):
-        # i = self.FileOperationsObject.FileNameObject.Lookup(filename, self.cwd)
         i = self.AbsolutePathObject.PathNameToInodeNumber(filename, self.cwd)
         if i == -1:
             print("Error: not found\n")
@@ -260,24 +253,21 @@ class FSShell():
             return -1
         return 0
 
-    #implements lnh
+    # implements hard link
     def lnh(self, target, name):
-        # i, errorcode = self.FileOperationsObject.Link(target, name, self.cwd)
         i, errorcode = self.AbsolutePathObject.Link(target, name, self.cwd)
         if i == -1:
-            print("Error: " + errorcode + "\n")
+            print("Error: " + errorcode)
             return -1
         return 0
 
-    #implements lns
+    # implements soft link
     def lns(self, target, name):
-        # i, errorcode = self.FileOperationsObject.Link(target, name, self.cwd)
         i, errorcode = self.AbsolutePathObject.Symlink(target, name, self.cwd)
         if i == -1:
-            print("Error: " + errorcode + "\n")
+            print("Error: " + errorcode)
             return -1
         return 0
-
 
     ## Main interpreter loop
     def Interpreter(self):
@@ -358,25 +348,18 @@ class FSShell():
                     print("Error: rm requires one argument")
                 else:
                     self.rm(splitcmd[1])
-            elif splitcmd[0] == "exit":
-                logging.debug('EXIT')
-                return
-            # create hardlink command
-            # lnh target name
-            # target is the source name
-            # name is the hardlink name
             elif splitcmd[0] == "lnh":
                 if len(splitcmd) != 3:
-                    print("Error: lnh requires two argument")
+                    print("Error: lnh requires two arguments")
                 else:
                     self.lnh(splitcmd[1], splitcmd[2])
-            # create softlink command
-            # lns target name
             elif splitcmd[0] == "lns":
                 if len(splitcmd) != 3:
-                    print("Error: lns requires two argument")
+                    print("Error: lns requires two arguments")
                 else:
                     self.lns(splitcmd[1], splitcmd[2])
+            elif splitcmd[0] == "exit":
+                return
             else:
                 print ("command " + splitcmd[0] + " not valid.\n")
 

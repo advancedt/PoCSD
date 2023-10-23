@@ -1,5 +1,6 @@
 import pickle, logging
 import fsconfig
+import xmlrpc.client, socket, time
 
 #### BLOCK LAYER
 
@@ -8,17 +9,22 @@ import fsconfig
 class DiskBlocks():
     def __init__(self):
 
-        # block[] is a list that stores all the blocks that make up the raw block layer
-        # the list has TOTAL_NUM_BLOCKS entries
-        # each entry in block[] is a bytearray with size BLOCK_SIZE
-        # a block can be indexed by its block number
-        self.block = []
+        # initialize clientID
+        if fsconfig.CID >= 0 and fsconfig.CID < fsconfig.MAX_CLIENTS:
+            self.clientID = fsconfig.CID
+        else:
+            print('Must specify valid cid')
+            quit()
 
-        # Initialize all raw blocks with zeros
-        for i in range (0, fsconfig.TOTAL_NUM_BLOCKS):
-            # putdata is a bytearray initialized with zeroes
-            putdata = bytearray(fsconfig.BLOCK_SIZE)
-            self.block.insert(i,putdata)
+        # initialize XMLRPC client connection to raw block server
+        if fsconfig.PORT:
+            PORT = fsconfig.PORT
+        else:
+            print('Must specify port number')
+            quit()
+        server_url = 'http://' + fsconfig.SERVER_ADDRESS + ':' + str(PORT)
+        self.block_server = xmlrpc.client.ServerProxy(server_url, use_builtin_types=True)
+        socket.setdefaulttimeout(fsconfig.SOCKET_TIMEOUT)
 
     ## Put: interface to write a raw block of data to the block indexed by block number
     ## Blocks are padded with zeroes up to BLOCK_SIZE
@@ -26,22 +32,25 @@ class DiskBlocks():
     def Put(self, block_number, block_data):
 
         logging.debug(
-            'DiskBLocks::Put: block number ' + str(block_number) + ' len ' + str(len(block_data)) + '\n' + str(block_data.hex()))
-
+            'Put: block number ' + str(block_number) + ' len ' + str(len(block_data)) + '\n' + str(block_data.hex()))
         if len(block_data) > fsconfig.BLOCK_SIZE:
-            logging.error('DiskBlocks::Put: Block larger than BLOCK_SIZE: ' + str(len(block_data)))
+            logging.error('Put: Block larger than BLOCK_SIZE: ' + str(len(block_data)))
             quit()
 
         if block_number in range(0, fsconfig.TOTAL_NUM_BLOCKS):
-            # block_data has the data to put in the block
-            # if it's not as large as a full block, ljust pads it with zeros
+            # ljust does the padding with zeros
             putdata = bytearray(block_data.ljust(fsconfig.BLOCK_SIZE, b'\x00'))
-            # A full block padded with zeroes is now in putdata; write it to the block[] list
-            self.block[block_number] = putdata
-            # Success
+            # Write block
+            # commenting this out as the request now goes to the server
+            # self.block[block_number] = putdata
+            # call Put() method on the server; code currently quits on any server failure
+            ret = self.block_server.Put(block_number, putdata)
+            if ret == -1:
+                logging.error('Put: Server returns error')
+                quit()
             return 0
         else:
-            logging.error('DiskBlocks::Put: Block out of range: ' + str(block_number))
+            logging.error('Put: Block out of range: ' + str(block_number))
             quit()
 
 
@@ -50,10 +59,15 @@ class DiskBlocks():
 
     def Get(self, block_number):
 
-        # Block must be within range
+        logging.debug('Get: ' + str(block_number))
         if block_number in range(0, fsconfig.TOTAL_NUM_BLOCKS):
-            logging.debug ('DiskBlocks::Get: block number ' + str(block_number) + '\n' + str((self.block[block_number]).hex()))
-            return self.block[block_number]
+            # logging.debug ('\n' + str((self.block[block_number]).hex()))
+            # commenting this out as the request now goes to the server
+            # return self.block[block_number]
+            # call Get() method on the server
+            data = self.block_server.Get(block_number)
+            # return as bytearray
+            return bytearray(data)
 
         logging.error('DiskBlocks::Get: Block number larger than TOTAL_NUM_BLOCKS: ' + str(block_number))
         quit()
