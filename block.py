@@ -1,4 +1,6 @@
 import pickle, logging
+
+import blockserver
 import fsconfig
 import xmlrpc.client, socket, time
 
@@ -26,6 +28,10 @@ class DiskBlocks():
         self.block_server = xmlrpc.client.ServerProxy(server_url, use_builtin_types=True)
         socket.setdefaulttimeout(fsconfig.SOCKET_TIMEOUT)
 
+        self.cacheDist = {}
+
+
+
     ## Put: interface to write a raw block of data to the block indexed by block number
     ## Blocks are padded with zeroes up to BLOCK_SIZE
 
@@ -44,7 +50,16 @@ class DiskBlocks():
             # commenting this out as the request now goes to the server
             # self.block[block_number] = putdata
             # call Put() method on the server; code currently quits on any server failure
-            ret = self.block_server.Put(block_number, putdata)
+            execute = False
+            while (not execute):
+                try:
+                    ret = self.block_server.Put(block_number, putdata)
+                    execute = True
+                except socket.timeout:
+                    logging.error('SERVER_TIMED_OUT')
+                    print("SERVER_TIMED_OUT_PUT")
+                    #time += fsconfig.SOCKET_TIMEOUT
+            # ret = self.block_server.Put(block_number, putdata)
             if ret == -1:
                 logging.error('Put: Server returns error')
                 quit()
@@ -65,12 +80,58 @@ class DiskBlocks():
             # commenting this out as the request now goes to the server
             # return self.block[block_number]
             # call Get() method on the server
-            data = self.block_server.Get(block_number)
+            execute = False
+            while (not execute):
+                try:
+                    data = self.block_server.Get(block_number)
+                    execute = True
+                except socket.timeout:
+                    print("SERVER_TIMED_OUT_GET")
             # return as bytearray
             return bytearray(data)
 
         logging.error('DiskBlocks::Get: Block number larger than TOTAL_NUM_BLOCKS: ' + str(block_number))
         quit()
+
+    def RSM(self, block_number):
+        logging.debug('RSM: ' + str(block_number))
+        if block_number in range(0, fsconfig.TOTAL_NUM_BLOCKS):
+            execute = False
+            while (not execute):
+                try:
+                    data = self.block_server.RSM(block_number)
+                    execute = True
+                except socket.timeout:
+                    print("SERVER_TIMED_OUT_RSM")
+            return bytearray(data)
+        logging.error('DiskBlocks::RSM: Block number larger than TOTAL_NUM_BLOCKS: ' + str(block_number))
+        quit()
+
+
+    def Acquire(self):
+        logging.debug('Acquire')
+        # the first byte of the block to signify the lock
+        lock = self.block_server.RSM(fsconfig.TOTAL_NUM_BLOCKS-1)[0]
+        # 0 == released
+        # 1 == acquired
+        # spin-block
+        # if there is a lock, then fall in to spin-block
+        while lock == 1:
+            # wait for 1 second
+            time.sleep(1)
+            lock = self.block_server.RSM(fsconfig.TOTAL_NUM_BLOCKS - 1)[0]
+        return 0
+
+
+    def Release(self):
+        logging.debug('Release')
+        RSM_UNLOCKED = bytearray(b'\x00') * 1
+        self.Put(fsconfig.TOTAL_NUM_BLOCKS-1, bytearray(RSM_UNLOCKED.ljust(fsconfig.BLOCK_SIZE, b'\x00')))
+        return 0
+
+
+
+
 
 
     ## Serializes and saves the DiskBlocks block[] data structure to a "dump" file on your disk

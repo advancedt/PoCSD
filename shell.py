@@ -1,3 +1,4 @@
+import block
 import fsconfig
 import os.path
 
@@ -276,7 +277,8 @@ class FSShell():
             splitcmd = command.split()
             if len(splitcmd) == 0:
                 continue
-            elif splitcmd[0] == "cd":
+            block.DiskBlocks.Acquire()
+            if splitcmd[0] == "cd":
                 if len(splitcmd) != 2:
                     print ("Error: cd requires one argument")
                 else:
@@ -362,5 +364,6 @@ class FSShell():
                 return
             else:
                 print ("command " + splitcmd[0] + " not valid.\n")
+            block.DiskBlocks.Release()
 
 
