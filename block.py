@@ -40,6 +40,7 @@ class DiskBlocks():
         if block_number == fsconfig.TOTAL_NUM_BLOCKS - 2 or block_number == fsconfig.TOTAL_NUM_BLOCKS - 1:
             logging.error('CACHE_INVALIDATED: ' + str(block_number))
             print("CACHE_INVALIDATED")
+            return
 
         logging.debug(
             'Put: block number ' + str(block_number) + ' len ' + str(len(block_data)) + '\n' + str(block_data.hex()))
@@ -64,8 +65,7 @@ class DiskBlocks():
             while (not execute):
                 try:
                     ret = self.block_server.Put(block_number, putdata)
-                    bytecid = bytearray(self.clientID)
-                    cid = bytearray(bytecid.ljust(fsconfig.BLOCK_SIZE, b'\x00'))
+                    cid = bytearray(bytearray(self.clientID).ljust(fsconfig.BLOCK_SIZE, b'\x00'))
                     self.block_server.Put(fsconfig.BLOCK_SIZE-2, cid)
                     # write-through
                     self.cacheDist[block_number] = bytearray(putdata)
@@ -90,11 +90,12 @@ class DiskBlocks():
 
     def Get(self, block_number):
 
-        logging.debug('Get: ' + str(block_number))
-
         if block_number == fsconfig.TOTAL_NUM_BLOCKS - 2 or block_number == fsconfig.TOTAL_NUM_BLOCKS - 1:
             logging.error('CACHE_INVALIDATED: ' + str(block_number))
             print("CACHE_INVALIDATED")
+            return
+
+        logging.debug('Get: ' + str(block_number))
 
         if block_number in range(0, fsconfig.TOTAL_NUM_BLOCKS):
             # logging.debug ('\n' + str((self.block[block_number]).hex()))
@@ -102,8 +103,7 @@ class DiskBlocks():
             # return self.block[block_number]
             # call Get() method on the server
             # if the block in cache --> hit the cache, get from cache
-            bytecid = bytearray(self.clientID)
-            cid = bytearray(bytecid.ljust(fsconfig.BLOCK_SIZE, b'\x00'))
+            cid = bytearray(bytearray(self.clientID).ljust(fsconfig.BLOCK_SIZE, b'\x00'))
             self.block_server.Put(fsconfig.BLOCK_SIZE - 2, cid)
 
             if block_number in self.cacheDist:
