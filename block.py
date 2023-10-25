@@ -37,10 +37,20 @@ class DiskBlocks():
 
     def Put(self, block_number, block_data):
 
+        if block_number == fsconfig.TOTAL_NUM_BLOCKS - 2 or block_number == fsconfig.TOTAL_NUM_BLOCKS - 1:
+            logging.error('CACHE_INVALIDATED: ' + str(block_number))
+            print("CACHE_INVALIDATED")
+
         logging.debug(
             'Put: block number ' + str(block_number) + ' len ' + str(len(block_data)) + '\n' + str(block_data.hex()))
         if len(block_data) > fsconfig.BLOCK_SIZE:
             logging.error('Put: Block larger than BLOCK_SIZE: ' + str(len(block_data)))
+            quit()
+
+        last_cid = bytearray(self.block_server.Get(fsconfig.TOTAL_NUM_BLOCKS-2))[0]
+        if last_cid != self.clientID:
+            logging.error("CACHE_INVALIDATED")
+            print("CACHE_INVALIDATED")
             quit()
 
         if block_number in range(0, fsconfig.TOTAL_NUM_BLOCKS):
@@ -54,6 +64,12 @@ class DiskBlocks():
             while (not execute):
                 try:
                     ret = self.block_server.Put(block_number, putdata)
+                    bytecid = bytearray(self.clientID)
+                    cid = bytearray(bytecid.ljust(fsconfig.BLOCK_SIZE, b'\x00'))
+                    self.block_server.Put(fsconfig.BLOCK_SIZE-2, cid)
+                    # write-through
+                    self.cacheDist[block_number] = bytearray(putdata)
+                    print("CACHE_WRITE_THROUGH " + str(block_number))
                     execute = True
                 except socket.timeout:
                     logging.error('SERVER_TIMED_OUT')
@@ -75,15 +91,31 @@ class DiskBlocks():
     def Get(self, block_number):
 
         logging.debug('Get: ' + str(block_number))
+
+        if block_number == fsconfig.TOTAL_NUM_BLOCKS - 2 or block_number == fsconfig.TOTAL_NUM_BLOCKS - 1:
+            logging.error('CACHE_INVALIDATED: ' + str(block_number))
+            print("CACHE_INVALIDATED")
+
         if block_number in range(0, fsconfig.TOTAL_NUM_BLOCKS):
             # logging.debug ('\n' + str((self.block[block_number]).hex()))
             # commenting this out as the request now goes to the server
             # return self.block[block_number]
             # call Get() method on the server
+            # if the block in cache --> hit the cache, get from cache
+            bytecid = bytearray(self.clientID)
+            cid = bytearray(bytecid.ljust(fsconfig.BLOCK_SIZE, b'\x00'))
+            self.block_server.Put(fsconfig.BLOCK_SIZE - 2, cid)
+
+            if block_number in self.cacheDist:
+                print("CACHE_HIT "+ str(block_number))
+                return self.cacheDist[block_number]
+            # not hit the cache --> store to the cache
+            print("CACHE_MISS " + str(block_number))
             execute = False
             while (not execute):
                 try:
                     data = self.block_server.Get(block_number)
+                    self.cacheDist[block_number] = bytearray(data)
                     execute = True
                 except socket.timeout:
                     print("SERVER_TIMED_OUT_GET")
