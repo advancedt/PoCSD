@@ -1,6 +1,4 @@
 import pickle, logging
-
-import blockserver
 import fsconfig
 import xmlrpc.client, socket, time
 
@@ -28,19 +26,26 @@ class DiskBlocks():
         self.block_server = xmlrpc.client.ServerProxy(server_url, use_builtin_types=True)
         socket.setdefaulttimeout(fsconfig.SOCKET_TIMEOUT)
 
-        self.cacheDist = {}
+        # 实现一个字典缓存
+        self.cacheDict = {}
 
+    def checkCid(self):
+        # 如果当前服务器的cid与客户端的cid不同
+        if self.clientID != bytearray(self.Get(fsconfig.TOTAL_NUM_BLOCKS - 2))[0]:
+            # 使缓存无效
+            self.cacheDict = {}
+            print("CACHE_INVALIDATED")
+            cid = bytearray(self.clientID.to_bytes(length=fsconfig.BLOCK_SIZE, byteorder='little'))
+            # 写入当前cid
+            self.Put(fsconfig.TOTAL_NUM_BLOCKS - 2, cid)
+            print("CACHE_WRITE_THROUGH" ,fsconfig.TOTAL_NUM_BLOCKS - 2)
 
+    def putCid(self):
+        cid = bytearray(self.clientID.to_bytes(length=fsconfig.BLOCK_SIZE, byteorder='little'))
+        self.Put(fsconfig.TOTAL_NUM_BLOCKS-2, cid)
 
-    ## Put: interface to write a raw block of data to the block indexed by block number
-    ## Blocks are padded with zeroes up to BLOCK_SIZE
 
     def Put(self, block_number, block_data):
-
-        if block_number == fsconfig.TOTAL_NUM_BLOCKS - 2 or block_number == fsconfig.TOTAL_NUM_BLOCKS - 1:
-            logging.error('CACHE_INVALIDATED: ' + str(block_number))
-            print("CACHE_INVALIDATED")
-            return
 
         logging.debug(
             'Put: block number ' + str(block_number) + ' len ' + str(len(block_data)) + '\n' + str(block_data.hex()))
@@ -48,34 +53,24 @@ class DiskBlocks():
             logging.error('Put: Block larger than BLOCK_SIZE: ' + str(len(block_data)))
             quit()
 
-        last_cid = bytearray(self.block_server.Get(fsconfig.TOTAL_NUM_BLOCKS-2))[0]
-        if last_cid != self.clientID:
-            logging.error("CACHE_INVALIDATED")
-            print("CACHE_INVALIDATED")
-            quit()
-
+        #实现至少写一次
         if block_number in range(0, fsconfig.TOTAL_NUM_BLOCKS):
-            # ljust does the padding with zeros
             putdata = bytearray(block_data.ljust(fsconfig.BLOCK_SIZE, b'\x00'))
-            # Write block
-            # commenting this out as the request now goes to the server
-            # self.block[block_number] = putdata
-            # call Put() method on the server; code currently quits on any server failure
             execute = False
             while (not execute):
                 try:
+                    # 更新服务器
                     ret = self.block_server.Put(block_number, putdata)
-                    cid = bytearray(bytearray(self.clientID).ljust(fsconfig.BLOCK_SIZE, b'\x00'))
-                    self.block_server.Put(fsconfig.BLOCK_SIZE-2, cid)
-                    # write-through
-                    self.cacheDist[block_number] = bytearray(putdata)
-                    print("CACHE_WRITE_THROUGH " + str(block_number))
                     execute = True
                 except socket.timeout:
-                    logging.error('SERVER_TIMED_OUT')
-                    print("SERVER_TIMED_OUT_PUT")
-                    #time += fsconfig.SOCKET_TIMEOUT
-            # ret = self.block_server.Put(block_number, putdata)
+                    print("SERVER_TIMED_OUT")
+            # 如果不是更新cid操作
+            if block_number!=fsconfig.TOTAL_NUM_BLOCKS - 2:
+                self.putCid()
+                # 更新缓存
+                self.cacheDict[block_number] = putdata
+                print("CACHE_WRITE_THROUGH " + str(block_number))
+
             if ret == -1:
                 logging.error('Put: Server returns error')
                 quit()
@@ -90,36 +85,29 @@ class DiskBlocks():
 
     def Get(self, block_number):
 
-        if block_number == fsconfig.TOTAL_NUM_BLOCKS - 2 or block_number == fsconfig.TOTAL_NUM_BLOCKS - 1:
-            logging.error('CACHE_INVALIDATED: ' + str(block_number))
-            print("CACHE_INVALIDATED")
-            return
-
         logging.debug('Get: ' + str(block_number))
-
         if block_number in range(0, fsconfig.TOTAL_NUM_BLOCKS):
-            # logging.debug ('\n' + str((self.block[block_number]).hex()))
-            # commenting this out as the request now goes to the server
-            # return self.block[block_number]
-            # call Get() method on the server
-            # if the block in cache --> hit the cache, get from cache
-            cid = bytearray(bytearray(self.clientID).ljust(fsconfig.BLOCK_SIZE, b'\x00'))
-            self.block_server.Put(fsconfig.BLOCK_SIZE - 2, cid)
-
-            if block_number in self.cacheDist:
+            #首先从缓存里寻找所要信息
+            #命中缓存，直接从缓存里返回
+            if block_number in self.cacheDict:
                 print("CACHE_HIT "+ str(block_number))
-                return self.cacheDist[block_number]
-            # not hit the cache --> store to the cache
+                return self.cacheDict[block_number]
+            # 没有命中缓存
             print("CACHE_MISS " + str(block_number))
+            # 要从内存中取出block[block_number]的内容，同时将其装入cache
+            # 实现至少写一次
             execute = False
             while (not execute):
                 try:
+                    # 从服务器里找
                     data = self.block_server.Get(block_number)
-                    self.cacheDist[block_number] = bytearray(data)
                     execute = True
                 except socket.timeout:
-                    print("SERVER_TIMED_OUT_GET")
-            # return as bytearray
+                    print("SERVER_TIMED_OUT")
+            if block_number < fsconfig.TOTAL_NUM_BLOCKS-2:
+                # 将数据装入cache
+                self.cacheDict[block_number] = bytearray(data)
+
             return bytearray(data)
 
         logging.error('DiskBlocks::Get: Block number larger than TOTAL_NUM_BLOCKS: ' + str(block_number))
@@ -134,36 +122,25 @@ class DiskBlocks():
                     data = self.block_server.RSM(block_number)
                     execute = True
                 except socket.timeout:
-                    print("SERVER_TIMED_OUT_RSM")
+                    print("SERVER_TIMED_OUT")
             return bytearray(data)
         logging.error('DiskBlocks::RSM: Block number larger than TOTAL_NUM_BLOCKS: ' + str(block_number))
         quit()
 
-
     def Acquire(self):
         logging.debug('Acquire')
-        # the first byte of the block to signify the lock
-        lock = self.block_server.RSM(fsconfig.TOTAL_NUM_BLOCKS-1)[0]
-        # 0 == released
-        # 1 == acquired
-        # spin-block
-        # if there is a lock, then fall in to spin-block
+        lock = self.RSM(fsconfig.TOTAL_NUM_BLOCKS-1)[0]
         while lock == 1:
-            # wait for 1 second
-            time.sleep(1)
-            lock = self.block_server.RSM(fsconfig.TOTAL_NUM_BLOCKS - 1)[0]
+            time.sleep(fsconfig.RETRY_INTERVAL)
+            lock = self.RSM(fsconfig.TOTAL_NUM_BLOCKS-1)[0]
+        self.checkCid()
         return 0
 
-
     def Release(self):
-        logging.debug('Release')
+        logging.debug('Acquire')
         RSM_UNLOCKED = bytearray(b'\x00') * 1
         self.Put(fsconfig.TOTAL_NUM_BLOCKS-1, bytearray(RSM_UNLOCKED.ljust(fsconfig.BLOCK_SIZE, b'\x00')))
         return 0
-
-
-
-
 
 
     ## Serializes and saves the DiskBlocks block[] data structure to a "dump" file on your disk
