@@ -276,127 +276,94 @@ class FSShell():
             splitcmd = command.split()
             if len(splitcmd) == 0:
                 continue
-            elif splitcmd[0] == "cd":
+            self.RawBlocks.Acquire()
+            if splitcmd[0] == "cd":
                 if len(splitcmd) != 2:
                     print ("Error: cd requires one argument")
                 else:
-                    # 只有当指令合法的情况下才能得到锁
-                    self.RawBlocks.Acquire()
                     self.cd(splitcmd[1])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "cat":
                 if len(splitcmd) != 2:
                     print ("Error: cat requires one argument")
                 else:
-                    self.RawBlocks.Acquire()
                     self.cat(splitcmd[1])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "ls":
-                self.RawBlocks.Acquire()
                 self.ls()
-                self.RawBlocks.Release()
             elif splitcmd[0] == "showblock":
                 if len(splitcmd) != 2:
                     print ("Error: showblock requires one argument")
                 else:
-                    self.RawBlocks.Acquire()
                     self.showblock(splitcmd[1])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "showblockslice":
                 if len(splitcmd) != 4:
                     print ("Error: showblockslice requires three arguments")
                 else:
-                    self.RawBlocks.Acquire()
                     self.showblockslice(splitcmd[1],splitcmd[2],splitcmd[3])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "showinode":
                 if len(splitcmd) != 2:
                     print ("Error: showinode requires one argument")
                 else:
-                    self.RawBlocks.Acquire()
                     self.showinode(splitcmd[1])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "showfsconfig":
                 if len(splitcmd) != 1:
                     print ("Error: showfsconfig do not require argument")
                 else:
-                    self.RawBlocks.Acquire()
                     self.showfsconfig()
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "load":
                 if len(splitcmd) != 2:
                     print ("Error: load requires 1 argument")
                 else:
-                    self.RawBlocks.Acquire()
                     self.load(splitcmd[1])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "save":
                 if len(splitcmd) != 2:
                     print ("Error: save requires 1 argument")
                 else:
-                    self.RawBlocks.Acquire()
                     self.save(splitcmd[1])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "mkdir":
                 if len(splitcmd) != 2:
                     print("Error: mkdir requires one argument")
                 else:
-                    self.RawBlocks.Acquire()
                     self.mkdir(splitcmd[1])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "create":
                 if len(splitcmd) != 2:
                     print("Error: create requires one argument")
                 else:
-                    self.RawBlocks.Acquire()
                     self.create(splitcmd[1])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "append":
                 if len(splitcmd) != 3:
                     print("Error: append requires two arguments")
                 else:
-                    self.RawBlocks.Acquire()
                     self.append(splitcmd[1], splitcmd[2])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "slice":
                 if len(splitcmd) != 4:
                     print ("Error: slice requires three arguments")
                 else:
-                    self.RawBlocks.Acquire()
                     self.slice(splitcmd[1],splitcmd[2],splitcmd[3])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "mirror":
                 if len(splitcmd) != 2:
                     print("Error: mirror requires one argument")
                 else:
-                    self.RawBlocks.Acquire()
                     self.mirror(splitcmd[1])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "rm":
                 if len(splitcmd) != 2:
                     print("Error: rm requires one argument")
                 else:
-                    self.RawBlocks.Acquire()
                     self.rm(splitcmd[1])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "lnh":
                 if len(splitcmd) != 3:
                     print("Error: lnh requires two arguments")
                 else:
-                    self.RawBlocks.Acquire()
                     self.lnh(splitcmd[1], splitcmd[2])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "lns":
                 if len(splitcmd) != 3:
                     print("Error: lns requires two arguments")
                 else:
-                    self.RawBlocks.Acquire()
                     self.lns(splitcmd[1], splitcmd[2])
-                    self.RawBlocks.Release()
             elif splitcmd[0] == "exit":
+                self.RawBlocks.Release()
                 return
             else:
                 print ("command " + splitcmd[0] + " not valid.\n")
-
+            self.RawBlocks.Release()
 
 

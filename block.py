@@ -36,14 +36,22 @@ class DiskBlocks():
             self.cacheDict = {}
             print("CACHE_INVALIDATED")
             cid = bytearray(self.clientID.to_bytes(length=fsconfig.BLOCK_SIZE, byteorder='little'))
-            # 写入当前cid
             self.Put(fsconfig.TOTAL_NUM_BLOCKS - 2, cid)
-            print("CACHE_WRITE_THROUGH" ,fsconfig.TOTAL_NUM_BLOCKS - 2)
+            print("CACHE_WRITE_THROUGH " ,fsconfig.TOTAL_NUM_BLOCKS - 2)
 
     def putCid(self):
         cid = bytearray(self.clientID.to_bytes(length=fsconfig.BLOCK_SIZE, byteorder='little'))
         self.Put(fsconfig.TOTAL_NUM_BLOCKS-2, cid)
 
+    def checkPutBlockNum(self, block_number, block_data):
+        # 如果要写的是 存储RSM锁的块 or 存储最后写用户的块
+        # 不要将此时的操作用户写入cache
+        if block_number == fsconfig.TOTAL_NUM_BLOCKS - 1 or block_number == fsconfig.TOTAL_NUM_BLOCKS - 2:
+            putdata = bytearray(block_data.ljust(fsconfig.BLOCK_SIZE, b'\x00'))
+            self.block_server.Put(block_number, putdata)
+            return True
+        else:
+            return False
 
     def Put(self, block_number, block_data):
 
@@ -55,22 +63,23 @@ class DiskBlocks():
 
         #实现至少写一次
         if block_number in range(0, fsconfig.TOTAL_NUM_BLOCKS):
+
+            # ---------test begin
+            if self.checkPutBlockNum(block_number, block_data):
+                return 0
+            # ---------test end
             putdata = bytearray(block_data.ljust(fsconfig.BLOCK_SIZE, b'\x00'))
             execute = False
             while (not execute):
                 try:
                     # 更新服务器
                     ret = self.block_server.Put(block_number, putdata)
+                    # 更新缓存
+                    self.cacheDict[block_number] = putdata
+                    print("CACHE_WRITE_THROUGH " + str(block_number))
                     execute = True
                 except socket.timeout:
                     print("SERVER_TIMED_OUT")
-            # 如果不是更新cid操作
-            if block_number!=fsconfig.TOTAL_NUM_BLOCKS - 2:
-                self.putCid()
-                # 更新缓存
-                self.cacheDict[block_number] = putdata
-                print("CACHE_WRITE_THROUGH " + str(block_number))
-
             if ret == -1:
                 logging.error('Put: Server returns error')
                 quit()
@@ -87,6 +96,7 @@ class DiskBlocks():
 
         logging.debug('Get: ' + str(block_number))
         if block_number in range(0, fsconfig.TOTAL_NUM_BLOCKS):
+
             #首先从缓存里寻找所要信息
             #命中缓存，直接从缓存里返回
             if block_number in self.cacheDict:
@@ -101,12 +111,12 @@ class DiskBlocks():
                 try:
                     # 从服务器里找
                     data = self.block_server.Get(block_number)
+                    #将数据装入cache
+                    self.cacheDict[block_number] = bytearray(data)
+                    #print("CACHE_WRITE_THROUGH " + str(block_number))
                     execute = True
                 except socket.timeout:
                     print("SERVER_TIMED_OUT")
-            if block_number < fsconfig.TOTAL_NUM_BLOCKS-2:
-                # 将数据装入cache
-                self.cacheDict[block_number] = bytearray(data)
 
             return bytearray(data)
 
@@ -129,17 +139,18 @@ class DiskBlocks():
 
     def Acquire(self):
         logging.debug('Acquire')
+        self.checkCid()
         lock = self.RSM(fsconfig.TOTAL_NUM_BLOCKS-1)[0]
         while lock == 1:
             time.sleep(fsconfig.RETRY_INTERVAL)
             lock = self.RSM(fsconfig.TOTAL_NUM_BLOCKS-1)[0]
-        self.checkCid()
         return 0
 
     def Release(self):
         logging.debug('Acquire')
         RSM_UNLOCKED = bytearray(b'\x00') * 1
         self.Put(fsconfig.TOTAL_NUM_BLOCKS-1, bytearray(RSM_UNLOCKED.ljust(fsconfig.BLOCK_SIZE, b'\x00')))
+        self.putCid()
         return 0
 
 
